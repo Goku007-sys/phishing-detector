@@ -1,0 +1,821 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PhishGuard — ML Phishing Detector</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0d14;
+    --bg2: #111520;
+    --bg3: #1a1f2e;
+    --border: #1f2a40;
+    --accent: #00e5ff;
+    --accent2: #ff2d55;
+    --safe: #00ff88;
+    --warn: #ffcc00;
+    --text: #e2e8f0;
+    --muted: #64748b;
+    --card: #131824;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Grid background */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,229,255,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,229,255,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container {
+    position: relative;
+    z-index: 1;
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 2rem 1.5rem 4rem;
+  }
+
+  /* Header */
+  header {
+    text-align: center;
+    padding: 3rem 0 2.5rem;
+    position: relative;
+  }
+
+  .logo {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin-bottom: 1rem;
+  }
+
+  .shield-icon {
+    width: 48px; height: 48px;
+    filter: drop-shadow(0 0 12px var(--accent));
+  }
+
+  h1 {
+    font-family: 'Space Mono', monospace;
+    font-size: clamp(1.8rem, 5vw, 2.8rem);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1;
+  }
+
+  h1 span { color: var(--accent); }
+
+  .tagline {
+    margin-top: 0.75rem;
+    color: var(--muted);
+    font-size: 0.95rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+
+  /* Scan bar */
+  .scan-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 2rem;
+    margin-bottom: 2rem;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .scan-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  }
+
+  .input-row {
+    display: flex;
+    gap: 0.75rem;
+    align-items: stretch;
+  }
+
+  #urlInput {
+    flex: 1;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    color: var(--text);
+    font-family: 'Space Mono', monospace;
+    font-size: 0.85rem;
+    padding: 0.9rem 1.1rem;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+
+  #urlInput:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(0,229,255,0.08);
+  }
+
+  #urlInput::placeholder { color: var(--muted); }
+
+  .scan-btn {
+    background: var(--accent);
+    color: #000;
+    border: none;
+    border-radius: 10px;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    padding: 0.9rem 1.6rem;
+    cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s, background 0.15s;
+    white-space: nowrap;
+  }
+
+  .scan-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 0 20px rgba(0,229,255,0.4);
+  }
+
+  .scan-btn:active { transform: translateY(0); }
+
+  .scan-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+  }
+
+  /* Example URLs */
+  .examples {
+    margin-top: 1.25rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+  }
+
+  .examples-label {
+    font-size: 0.75rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-right: 0.25rem;
+  }
+
+  .example-pill {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 0.75rem;
+    font-family: 'Space Mono', monospace;
+    padding: 0.3rem 0.75rem;
+    transition: border-color 0.2s, color 0.2s;
+  }
+
+  .example-pill:hover { border-color: var(--accent); color: var(--accent); }
+  .example-pill.phish { border-color: rgba(255,45,85,0.3); }
+  .example-pill.phish:hover { border-color: var(--accent2); color: var(--accent2); }
+
+  /* Loader */
+  .loader {
+    display: none;
+    text-align: center;
+    padding: 3rem;
+  }
+
+  .loader.active { display: block; }
+
+  .radar {
+    width: 80px; height: 80px;
+    border-radius: 50%;
+    border: 2px solid var(--border);
+    position: relative;
+    margin: 0 auto 1.5rem;
+    animation: radarSpin 1.5s linear infinite;
+  }
+
+  .radar::before {
+    content: '';
+    position: absolute;
+    inset: 4px;
+    border-radius: 50%;
+    border: 2px solid var(--accent);
+    border-color: var(--accent) transparent transparent transparent;
+  }
+
+  .radar::after {
+    content: '';
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 50%;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent));
+    transform-origin: left center;
+    animation: radarSweep 1.5s linear infinite;
+  }
+
+  @keyframes radarSpin { to { transform: rotate(360deg); } }
+  @keyframes radarSweep { to { transform: rotate(360deg); } }
+
+  .loader p {
+    color: var(--muted);
+    font-size: 0.85rem;
+    font-family: 'Space Mono', monospace;
+    animation: blink 1s step-end infinite;
+  }
+
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+  /* Result */
+  #result {
+    display: none;
+    animation: fadeUp 0.4s ease;
+  }
+
+  #result.visible { display: block; }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(16px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .verdict-banner {
+    border-radius: 16px;
+    padding: 2rem;
+    margin-bottom: 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .verdict-banner.safe {
+    background: rgba(0,255,136,0.06);
+    border: 1px solid rgba(0,255,136,0.25);
+  }
+
+  .verdict-banner.danger {
+    background: rgba(255,45,85,0.06);
+    border: 1px solid rgba(255,45,85,0.25);
+  }
+
+  .verdict-icon {
+    font-size: 3rem;
+    flex-shrink: 0;
+    filter: drop-shadow(0 0 12px currentColor);
+  }
+
+  .verdict-banner.safe .verdict-icon { color: var(--safe); }
+  .verdict-banner.danger .verdict-icon { color: var(--accent2); }
+
+  .verdict-text h2 {
+    font-family: 'Space Mono', monospace;
+    font-size: 1.5rem;
+    margin-bottom: 0.3rem;
+  }
+
+  .verdict-banner.safe .verdict-text h2 { color: var(--safe); }
+  .verdict-banner.danger .verdict-text h2 { color: var(--accent2); }
+
+  .verdict-url {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.75rem;
+    color: var(--muted);
+    word-break: break-all;
+    margin-bottom: 0.5rem;
+  }
+
+  .verdict-time {
+    font-size: 0.75rem;
+    color: var(--muted);
+  }
+
+  /* Confidence gauge */
+  .gauge-section {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .gauge-label {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    margin-bottom: 1rem;
+    font-family: 'Space Mono', monospace;
+  }
+
+  .gauge-bars {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .gauge-row {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+  }
+
+  .gauge-row-label {
+    width: 80px;
+    font-size: 0.8rem;
+    color: var(--muted);
+    flex-shrink: 0;
+  }
+
+  .gauge-track {
+    flex: 1;
+    height: 8px;
+    background: var(--bg3);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+
+  .gauge-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.8s cubic-bezier(.22,.68,0,1.2);
+    width: 0;
+  }
+
+  .gauge-fill.safe { background: linear-gradient(90deg, #005c30, var(--safe)); }
+  .gauge-fill.danger { background: linear-gradient(90deg, #5c0020, var(--accent2)); }
+
+  .gauge-val {
+    width: 45px;
+    text-align: right;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.85rem;
+    font-weight: 700;
+  }
+
+  /* Risk Factors */
+  .section-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .section-title {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    margin-bottom: 1rem;
+  }
+
+  .risk-list { list-style: none; display: flex; flex-direction: column; gap: 0.5rem; }
+
+  .risk-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.65rem 0.85rem;
+    border-radius: 8px;
+    background: var(--bg3);
+    font-size: 0.85rem;
+  }
+
+  .severity-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .severity-dot.high { background: var(--accent2); box-shadow: 0 0 6px var(--accent2); }
+  .severity-dot.medium { background: var(--warn); box-shadow: 0 0 6px var(--warn); }
+  .severity-dot.low { background: var(--muted); }
+
+  .severity-badge {
+    margin-left: auto;
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-family: 'Space Mono', monospace;
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+  }
+
+  .severity-badge.high { background: rgba(255,45,85,0.15); color: var(--accent2); }
+  .severity-badge.medium { background: rgba(255,204,0,0.12); color: var(--warn); }
+  .severity-badge.low { background: rgba(100,116,139,0.15); color: var(--muted); }
+
+  .no-risk {
+    text-align: center;
+    color: var(--safe);
+    font-size: 0.85rem;
+    padding: 1rem;
+  }
+
+  /* Feature grid */
+  .feature-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 0.6rem;
+  }
+
+  .feat-item {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.6rem 0.8rem;
+  }
+
+  .feat-name {
+    font-size: 0.65rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.2rem;
+  }
+
+  .feat-val {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.8rem;
+    font-weight: 700;
+  }
+
+  .feat-val.positive { color: var(--accent2); }
+  .feat-val.zero { color: var(--muted); }
+
+  /* Batch */
+  .batch-section {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 1.75rem;
+    margin-top: 2rem;
+  }
+
+  #batchUrls {
+    width: 100%;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    color: var(--text);
+    font-family: 'Space Mono', monospace;
+    font-size: 0.78rem;
+    padding: 0.9rem 1rem;
+    resize: vertical;
+    min-height: 100px;
+    outline: none;
+    transition: border-color 0.2s;
+    margin-bottom: 0.75rem;
+  }
+
+  #batchUrls:focus { border-color: var(--accent); }
+  #batchUrls::placeholder { color: var(--muted); }
+
+  .batch-results { margin-top: 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
+
+  .batch-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    background: var(--bg3);
+    border-radius: 8px;
+    padding: 0.6rem 0.9rem;
+    font-size: 0.8rem;
+    border-left: 3px solid var(--border);
+    animation: fadeUp 0.3s ease;
+  }
+
+  .batch-row.safe { border-left-color: var(--safe); }
+  .batch-row.danger { border-left-color: var(--accent2); }
+
+  .batch-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    flex-shrink: 0;
+  }
+
+  .batch-label.safe { background: rgba(0,255,136,0.12); color: var(--safe); }
+  .batch-label.danger { background: rgba(255,45,85,0.12); color: var(--accent2); }
+
+  .batch-url { color: var(--muted); word-break: break-all; flex: 1; font-size: 0.75rem; }
+  .batch-conf { font-family: 'Space Mono', monospace; font-size: 0.75rem; color: var(--muted); flex-shrink: 0; }
+
+  /* collapsible */
+  .collapsible-btn {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--muted);
+    cursor: pointer;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.7rem;
+    letter-spacing: 0.05em;
+    padding: 0.4rem 0.8rem;
+    margin-bottom: 0.75rem;
+    transition: border-color 0.2s, color 0.2s;
+  }
+
+  .collapsible-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .collapsible-content { display: none; }
+  .collapsible-content.open { display: block; }
+
+  footer {
+    text-align: center;
+    margin-top: 3rem;
+    color: var(--muted);
+    font-size: 0.75rem;
+    font-family: 'Space Mono', monospace;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <div class="logo">
+      <svg class="shield-icon" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M24 4L6 12v12c0 10.5 7.7 20.3 18 22.6C34.3 44.3 42 34.5 42 24V12L24 4z"
+          fill="rgba(0,229,255,0.12)" stroke="#00e5ff" stroke-width="2"/>
+        <path d="M18 24l4 4 8-8" stroke="#00e5ff" stroke-width="2.5"
+          stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span style="font-family:'Space Mono',monospace;font-size:1.4rem;font-weight:700">PhishGuard</span>
+    </div>
+    <h1>ML <span>Phishing</span> Detector</h1>
+    <p class="tagline">Machine Learning · URL Analysis · Real-time Threat Assessment</p>
+  </header>
+
+  <!-- Single URL scan -->
+  <div class="scan-card">
+    <div class="input-row">
+      <input type="text" id="urlInput"
+        placeholder="https://example.com or paste any suspicious URL..."
+        autocomplete="off" autocorrect="off" spellcheck="false"/>
+      <button class="scan-btn" id="scanBtn" onclick="scanURL()">▶ SCAN</button>
+    </div>
+    <div class="examples">
+      <span class="examples-label">Try:</span>
+      <span class="example-pill" onclick="setUrl('https://www.google.com')">google.com ✓</span>
+      <span class="example-pill" onclick="setUrl('https://www.paypal.com/us/home')">paypal.com ✓</span>
+      <span class="example-pill phish" onclick="setUrl('http://paypal-verify.tk/login?redirect=paypal.com')">paypal-verify.tk ✗</span>
+      <span class="example-pill phish" onclick="setUrl('http://192.168.0.1/banking/secure')">192.168.0.1/banking ✗</span>
+      <span class="example-pill phish" onclick="setUrl('http://apple-id-verify.xyz/signin')">apple-id-verify.xyz ✗</span>
+    </div>
+  </div>
+
+  <!-- Loader -->
+  <div class="loader" id="loader">
+    <div class="radar"></div>
+    <p>Analyzing URL...</p>
+  </div>
+
+  <!-- Result -->
+  <div id="result">
+
+    <!-- Verdict -->
+    <div class="verdict-banner" id="verdictBanner">
+      <span class="verdict-icon" id="verdictIcon"></span>
+      <div class="verdict-text">
+        <h2 id="verdictTitle"></h2>
+        <div class="verdict-url" id="verdictUrl"></div>
+        <div class="verdict-time" id="verdictTime"></div>
+      </div>
+    </div>
+
+    <!-- Confidence gauge -->
+    <div class="gauge-section">
+      <div class="gauge-label">Threat Assessment</div>
+      <div class="gauge-bars">
+        <div class="gauge-row">
+          <span class="gauge-row-label">Phishing</span>
+          <div class="gauge-track">
+            <div class="gauge-fill danger" id="phishBar"></div>
+          </div>
+          <span class="gauge-val" id="phishPct" style="color:var(--accent2)"></span>
+        </div>
+        <div class="gauge-row">
+          <span class="gauge-row-label">Legitimate</span>
+          <div class="gauge-track">
+            <div class="gauge-fill safe" id="safeBar"></div>
+          </div>
+          <span class="gauge-val" id="safePct" style="color:var(--safe)"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Risk factors -->
+    <div class="section-card">
+      <div class="section-title">⚠ Risk Factors</div>
+      <ul class="risk-list" id="riskList"></ul>
+    </div>
+
+    <!-- Features (collapsible) -->
+    <div class="section-card">
+      <div class="section-title">🔬 Extracted Features</div>
+      <button class="collapsible-btn" onclick="toggleFeatures()">SHOW ALL FEATURES ▾</button>
+      <div class="collapsible-content" id="featureContent">
+        <div class="feature-grid" id="featureGrid"></div>
+      </div>
+    </div>
+
+  </div><!-- #result -->
+
+  <!-- Batch scanner -->
+  <div class="batch-section">
+    <div class="section-title" style="font-family:'Space Mono',monospace;font-size:0.75rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted);margin-bottom:1rem;">
+      📋 Batch URL Scanner (up to 20)
+    </div>
+    <textarea id="batchUrls" placeholder="Paste one URL per line...&#10;https://www.google.com&#10;http://phish-site.tk/login&#10;..."></textarea>
+    <button class="scan-btn" id="batchBtn" onclick="batchScan()" style="width:100%">▶ SCAN ALL</button>
+    <div class="batch-results" id="batchResults"></div>
+  </div>
+
+  <footer>PhishGuard v1.0 — ML model trained on URL structural features — Not a substitute for professional security tools</footer>
+
+</div>
+
+<script>
+  function setUrl(url) {
+    document.getElementById('urlInput').value = url;
+    document.getElementById('urlInput').focus();
+  }
+
+  function toggleFeatures() {
+    const el = document.getElementById('featureContent');
+    const btn = document.querySelector('.collapsible-btn');
+    el.classList.toggle('open');
+    btn.textContent = el.classList.contains('open') ? 'HIDE FEATURES ▴' : 'SHOW ALL FEATURES ▾';
+  }
+
+  document.getElementById('urlInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter') scanURL();
+  });
+
+  async function scanURL() {
+    const url = document.getElementById('urlInput').value.trim();
+    if (!url) return;
+
+    document.getElementById('loader').classList.add('active');
+    document.getElementById('result').classList.remove('visible');
+    document.getElementById('scanBtn').disabled = true;
+
+    try {
+      const res = await fetch('/api/predict', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url })
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      renderResult(data);
+    } catch (err) {
+      alert('Error: ' + err.message);
+    } finally {
+      document.getElementById('loader').classList.remove('active');
+      document.getElementById('scanBtn').disabled = false;
+    }
+  }
+
+  function renderResult(data) {
+    const isPhish = data.label === 'phishing';
+
+    // Banner
+    const banner = document.getElementById('verdictBanner');
+    banner.className = 'verdict-banner ' + (isPhish ? 'danger' : 'safe');
+    document.getElementById('verdictIcon').textContent = isPhish ? '🚨' : '✅';
+    document.getElementById('verdictTitle').textContent = isPhish
+      ? 'PHISHING DETECTED'
+      : 'LIKELY LEGITIMATE';
+    document.getElementById('verdictUrl').textContent = data.url;
+    document.getElementById('verdictTime').textContent =
+      `Analyzed in ${data.analysis_time_ms}ms`;
+
+    // Bars (trigger animation)
+    const phishPct = data.confidence;
+    const safePct = data.safe_score;
+
+    setTimeout(() => {
+      document.getElementById('phishBar').style.width = phishPct + '%';
+      document.getElementById('safeBar').style.width = safePct + '%';
+    }, 50);
+
+    document.getElementById('phishPct').textContent = phishPct + '%';
+    document.getElementById('safePct').textContent = safePct + '%';
+
+    // Reset bars
+    document.getElementById('phishBar').style.width = '0';
+    document.getElementById('safeBar').style.width = '0';
+
+    // Risk factors
+    const riskList = document.getElementById('riskList');
+    riskList.innerHTML = '';
+    if (data.risk_factors && data.risk_factors.length) {
+      data.risk_factors.forEach(r => {
+        const li = document.createElement('li');
+        li.className = 'risk-item';
+        li.innerHTML = `
+          <span class="severity-dot ${r.severity}"></span>
+          <span>${r.factor}</span>
+          <span class="severity-badge ${r.severity}">${r.severity}</span>
+        `;
+        riskList.appendChild(li);
+      });
+    } else {
+      riskList.innerHTML = '<div class="no-risk">✔ No significant risk factors detected</div>';
+    }
+
+    // Features
+    const featureGrid = document.getElementById('featureGrid');
+    featureGrid.innerHTML = '';
+    const feats = data.features || {};
+    Object.entries(feats).forEach(([k, v]) => {
+      const isPositive = v > 0;
+      const displayVal = typeof v === 'number' && !Number.isInteger(v)
+        ? v.toFixed(3) : v;
+      const div = document.createElement('div');
+      div.className = 'feat-item';
+      div.innerHTML = `
+        <div class="feat-name">${k.replace(/_/g,' ')}</div>
+        <div class="feat-val ${isPositive ? 'positive' : 'zero'}">${displayVal}</div>
+      `;
+      featureGrid.appendChild(div);
+    });
+
+    document.getElementById('featureContent').classList.remove('open');
+    document.querySelector('.collapsible-btn').textContent = 'SHOW ALL FEATURES ▾';
+
+    document.getElementById('result').classList.add('visible');
+    document.getElementById('result').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  async function batchScan() {
+    const raw = document.getElementById('batchUrls').value.trim();
+    const urls = raw.split('\n').map(u => u.trim()).filter(Boolean);
+    if (!urls.length) return;
+    if (urls.length > 20) { alert('Max 20 URLs'); return; }
+
+    const btn = document.getElementById('batchBtn');
+    btn.disabled = true;
+    btn.textContent = '⏳ Scanning...';
+    document.getElementById('batchResults').innerHTML = '';
+
+    try {
+      const res = await fetch('/api/batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ urls })
+      });
+      const data = await res.json();
+      const container = document.getElementById('batchResults');
+
+      (data.results || []).forEach(r => {
+        if (r.error) {
+          container.innerHTML += `<div class="batch-row">
+            <span class="batch-url" style="color:var(--accent2)">${r.url}: ${r.error}</span>
+          </div>`;
+          return;
+        }
+        const isPhish = r.label === 'phishing';
+        container.innerHTML += `
+          <div class="batch-row ${isPhish ? 'danger' : 'safe'}">
+            <span class="batch-label ${isPhish ? 'danger' : 'safe'}">${isPhish ? 'PHISH' : 'SAFE'}</span>
+            <span class="batch-url">${r.url}</span>
+            <span class="batch-conf">${r.confidence}%</span>
+          </div>`;
+      });
+    } catch (err) {
+      alert('Batch error: ' + err.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '▶ SCAN ALL';
+    }
+  }
+</script>
+</body>
+</html>
